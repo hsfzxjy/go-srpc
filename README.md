@@ -13,53 +13,53 @@ An example for quick glance:
 package main
 
 import (
-	"errors"
-	"log"
-	"net"
-	"net/http"
-	"net/rpc"
-	"time"
+    "errors"
+    "log"
+    "net"
+    "net/http"
+    "net/rpc"
+    "time"
 
-	"github.com/hsfzxjy/go-srpc"
+    "github.com/hsfzxjy/go-srpc"
 )
 
 type Foo int
 
 func (*Foo) Bar(n int, s *srpc.Session) error {
-	return srpc.S(func() error {
-		for i := 0; i < n; i++ {
-			s.PushValue(i)
-			s.Logf("Log from Server: i=%d\n", i)
-		}
-		return errors.New("example error")
-	}, s, nil)
+    return srpc.S(func() error {
+        for i := 0; i < n; i++ {
+            s.PushValue(i)
+            s.Logf("Log from Server: i=%d\n", i)
+        }
+        return errors.New("example error")
+    }, s, nil)
 }
 
 func main() {
-	// start RPC server
-	rpc.Register(new(Foo))
-	rpc.HandleHTTP()
-	listener, _ := net.Listen("tcp", ":1234")
-	go http.Serve(listener, nil)
+    // start RPC server
+    rpc.Register(new(Foo))
+    rpc.HandleHTTP()
+    listener, _ := net.Listen("tcp", ":1234")
+    go http.Serve(listener, nil)
 
-	time.Sleep(time.Millisecond * 10)
+    time.Sleep(time.Millisecond * 10)
 
-	// prepare RPC client
-	cl, _ := rpc.DialHTTP("tcp", "localhost:1234")
-	cli := srpc.WrapClient(cl)
+    // prepare RPC client
+    cl, _ := rpc.DialHTTP("tcp", "localhost:1234")
+    cli := srpc.WrapClient(cl)
 
-	// invoke remote stream function
-	h, _ := cli.CallStream("Foo.Bar", 6)
-	// enumerate the result
-	for x := range h.C() {
-		log.Printf("recieve value from remote: %+v\n", x)
-	}
-	// check potential returned error
-	if err := h.Result(); err != nil {
-		log.Printf("remote returns error: %+v", err)
-	}
+    // invoke remote stream function
+    h, _ := cli.CallStream("Foo.Bar", 6)
+    // enumerate the result
+    for x := range h.C() {
+        log.Printf("recieve value from remote: %+v\n", x)
+    }
+    // check potential returned error
+    if err := h.Result(); err != nil {
+        log.Printf("remote returns error: %+v", err)
+    }
 
-	listener.Close()
+    listener.Close()
 }
 ```
 
@@ -73,8 +73,8 @@ To define a streaming method that would continuously push events to the client, 
 import "github.com/hsfzxjy/srpc"
 
 func (*Foo) Bar(arg ArgType, s *srpc.Session) error {
-	return srpc.S(func() error {
-		// your code goes here
+    return srpc.S(func() error {
+        // your code goes here
 
         // push arbitary values to the client
         s.PushValue(42)
@@ -88,7 +88,7 @@ func (*Foo) Bar(arg ArgType, s *srpc.Session) error {
 
         // return an optional error to the client
         return nil
-	}, s, nil)
+    }, s, nil)
 ```
 
 The third argument of `srpc.S` can be used to configure the current session
