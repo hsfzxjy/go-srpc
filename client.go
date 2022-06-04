@@ -4,11 +4,11 @@ import (
 	"net/rpc"
 )
 
-type client struct {
+type Client struct {
 	*rpc.Client
 }
 
-func (c *client) CallStream(name string, args any) (h *streamHandle, err error) {
+func (c *Client) CallStream(name string, args any) (h *streamHandle, err error) {
 	handle := streamHandle{
 		sid:    0,
 		ch:     make(chan any),
@@ -26,6 +26,6 @@ func (c *client) CallStream(name string, args any) (h *streamHandle, err error) 
 	return
 }
 
-func WrapClient(c *rpc.Client) *client {
-	return &client{Client: c}
+func WrapClient(c *rpc.Client) *Client {
+	return &Client{Client: c}
 }
