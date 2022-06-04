@@ -7,7 +7,7 @@ import (
 type streamHandle struct {
 	sid    uint64
 	state  uint32
-	client *client
+	client *Client
 
 	isPolling uint32
 
