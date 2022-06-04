@@ -99,14 +99,14 @@ func (h *streamHandle) Result() error {
 }
 
 func (h *streamHandle) Cancel() bool {
-	if h.state&ssCanceled != 0 {
+	if h.state&(ssCanceled|ssFinished) != 0 {
 		return false
 	}
 
 	var reply bool
 	h.state |= ssCanceled | ssFinished
 	h.client.Call("StreamManager.Cancel", h.sid, &reply)
-    close(h.ch)
+	close(h.ch)
 
 	return reply
 }
