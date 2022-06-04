@@ -38,6 +38,9 @@ func (h *streamHandle) startPoll() error {
 
 			switch e.Typ {
 			case seValue:
+				if h.state&ssCanceled != 0 {
+					break LOOP
+				}
 				h.ch <- e.Data
 				continue LOOP
 			case seLog:
@@ -97,11 +100,13 @@ func (h *streamHandle) Result() error {
 
 func (h *streamHandle) Cancel() bool {
 	if h.state&ssCanceled != 0 {
-		panic("srpc: Cancel() called on an already canceled stream")
+		return false
 	}
 
 	var reply bool
 	h.state |= ssCanceled | ssFinished
 	h.client.Call("StreamManager.Cancel", h.sid, &reply)
+    close(h.ch)
+
 	return reply
 }

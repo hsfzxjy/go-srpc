@@ -49,6 +49,8 @@ func main() {
 	h, _ := cli.CallStream("Foo.Bar", 6)
 	log.Printf("recieve value from remote: %+v\n", <-h.C())
 	// cancel the remote stream
+	go h.Cancel()
+	<- h.C()
 	h.Cancel()
 
 	// check potential returned error
