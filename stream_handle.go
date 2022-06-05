@@ -100,6 +100,11 @@ func (h *streamHandle) Result() error {
 	return h.Err
 }
 
+func (h *streamHandle) CancelAndResult() error {
+	h.Cancel()
+	return h.Result()
+}
+
 func (h *streamHandle) Cancel() bool {
 	if h.state.hasFlagLock(ssCanceled | ssFinished) {
 		return false
