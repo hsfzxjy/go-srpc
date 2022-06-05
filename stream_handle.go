@@ -107,10 +107,10 @@ func (h *streamHandle) Cancel() bool {
 
 	var reply bool
 	h.state.L.Lock()
+	defer h.state.L.Unlock()
 	h.state.setFlag(ssCanceled | ssFinished)
-	close(h.ch)
-	h.state.L.Unlock()
 	h.client.Call("StreamManager.Cancel", h.sid, &reply)
+	close(h.ch)
 
 	return reply
 }
