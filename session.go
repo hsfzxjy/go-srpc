@@ -4,6 +4,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -47,12 +48,6 @@ func mergeConfig(cfg *SessionConfig) (ret *SessionConfig) {
 	return
 }
 
-const (
-	ssFinished uint32 = 1 << iota
-	ssTimeout
-	ssCanceled
-)
-
 type sessionError struct{ S string }
 
 func newSessionError(str string) *sessionError { return &sessionError{S: str} }
@@ -68,7 +63,8 @@ var errSessionCanceled = newSessionError("srpc-server: session was canceled by c
 
 type Session struct {
 	Sid   uint64
-	state uint32
+	state sessionState
+	l     *sync.Mutex
 
 	buf      chan *StreamEvent
 	endCh    chan struct{}
@@ -82,7 +78,8 @@ type Session struct {
 func (s *Session) initSession(sid uint64, cfg *SessionConfig) {
 	cfg = mergeConfig(cfg)
 	s.Sid = sid
-	s.state = 0
+	s.state.state = 0
+	s.l = &sync.Mutex{}
 	s.buf = make(chan *StreamEvent, cfg.BufferCapacity)
 	s.endCh = make(chan struct{})
 	s.cancelCh = make(chan struct{})
@@ -91,10 +88,11 @@ func (s *Session) initSession(sid uint64, cfg *SessionConfig) {
 }
 
 func (s *Session) sessionErrorFromState() error {
-	st := s.state
-	if st&ssCanceled != 0 {
+	s.state.L.RLock()
+	defer s.state.L.RUnlock()
+	if s.state.hasFlag(ssCanceled) {
 		return errSessionCanceled
-	} else if st&ssTimeout != 0 {
+	} else if s.state.hasFlag(ssTimeout) {
 		return errClientTimeout
 	} else {
 		return errSessionFinished
@@ -102,7 +100,7 @@ func (s *Session) sessionErrorFromState() error {
 }
 
 func (s *Session) push(typ streamEventType, data any) {
-	if s.state&ssFinished != 0 {
+	if s.state.hasFlagLock(ssFinished) {
 		panic(s.sessionErrorFromState())
 	}
 
@@ -112,7 +110,7 @@ func (s *Session) push(typ streamEventType, data any) {
 	event := &StreamEvent{Typ: typ, Data: data}
 
 	if typ.IsTerminal() {
-		s.state |= ssFinished
+		s.state.setFlagLock(ssFinished)
 	}
 
 	select {
@@ -120,7 +118,7 @@ func (s *Session) push(typ streamEventType, data any) {
 	case <-s.cancelCh:
 		panic(errSessionCanceled)
 	case <-timer.C:
-		s.state |= ssFinished | ssTimeout
+		s.state.setFlagLock(ssFinished | ssTimeout)
 		panic(errClientTimeout)
 	}
 }
@@ -154,7 +152,7 @@ func (s *Session) done() {
 }
 
 func (s *Session) panic(val *panicInfo) {
-	if s.state&ssFinished != 0 {
+	if s.state.hasFlagLock(ssFinished) {
 		s.panicInfo = val
 		return
 	}
@@ -172,7 +170,7 @@ func (s *Session) waitFlush(timeout time.Duration) {
 }
 
 func (s *Session) flush() (ret []*StreamEvent) {
-	if s.state&ssFinished != 0 {
+	if s.state.hasFlagLock(ssFinished) {
 		if s.cfg.BufferCapacity > 0 {
 			if len(s.buf) == 0 {
 				return nil
@@ -199,7 +197,7 @@ func (s *Session) flush() (ret []*StreamEvent) {
 		ret = append(ret, <-s.buf)
 	}
 
-	if s.state&ssFinished != 0 {
+	if s.state.hasFlagLock(ssFinished) {
 		if s.panicInfo != nil {
 			ret = append(ret, &StreamEvent{Typ: sePanic, Data: s.panicInfo})
 		}
@@ -210,7 +208,9 @@ func (s *Session) flush() (ret []*StreamEvent) {
 }
 
 func (s *Session) cancel() {
-	s.state |= ssFinished | ssCanceled
+	s.state.L.Lock()
+	defer s.state.L.Unlock()
+	s.state.setFlag(ssFinished | ssCanceled)
 	close(s.cancelCh)
 }
 

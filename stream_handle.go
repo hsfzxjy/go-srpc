@@ -6,7 +6,7 @@ import (
 
 type streamHandle struct {
 	sid    uint64
-	state  uint32
+	state  sessionState
 	client *Client
 
 	isPolling uint32
@@ -19,10 +19,10 @@ type streamHandle struct {
 func (h *streamHandle) startPoll() error {
 	var flushed []*StreamEvent
 
-	for h.state&ssFinished == 0 {
+	for !h.state.hasFlagLock(ssFinished) {
 		flushed = nil
 		err := h.client.Call("StreamManager.Poll", h.sid, &flushed)
-		if h.state&ssFinished != 0 {
+		if h.state.hasFlagLock(ssFinished) {
 			return nil
 		}
 		if err != nil {
@@ -30,18 +30,20 @@ func (h *streamHandle) startPoll() error {
 		}
 
 		if len(flushed) > 0 && flushed[len(flushed)-1].Typ.IsTerminal() {
-			h.state |= ssFinished
+			h.state.setFlagLock(ssFinished)
 		}
 
 	LOOP:
 		for _, e := range flushed {
-
 			switch e.Typ {
 			case seValue:
-				if h.state&ssCanceled != 0 {
+				h.state.L.RLock()
+				if h.state.hasFlag(ssCanceled) {
+					h.state.L.RUnlock()
 					break LOOP
 				}
 				h.ch <- e.Data
+				h.state.L.RUnlock()
 				continue LOOP
 			case seLog:
 				clientLogFunc(e.Data.(string))
@@ -82,14 +84,14 @@ func (h *streamHandle) C() <-chan any {
 }
 
 func (h *streamHandle) Success() bool {
-	if h.state&ssFinished == 0 {
+	if !h.state.hasFlagLock(ssFinished) {
 		panic("srpc: Success() called before stream finished")
 	}
 	return h.Panic == nil && h.Err == nil
 }
 
 func (h *streamHandle) Result() error {
-	if h.state&ssFinished == 0 {
+	if !h.state.hasFlagLock(ssFinished) {
 		panic("srpc: Result() called before stream finished")
 	}
 	if h.Panic != nil {
@@ -99,14 +101,16 @@ func (h *streamHandle) Result() error {
 }
 
 func (h *streamHandle) Cancel() bool {
-	if h.state&(ssCanceled|ssFinished) != 0 {
+	if h.state.hasFlagLock(ssCanceled | ssFinished) {
 		return false
 	}
 
 	var reply bool
-	h.state |= ssCanceled | ssFinished
-	h.client.Call("StreamManager.Cancel", h.sid, &reply)
+	h.state.L.Lock()
+	h.state.setFlag(ssCanceled | ssFinished)
 	close(h.ch)
+	h.state.L.Unlock()
+	h.client.Call("StreamManager.Cancel", h.sid, &reply)
 
 	return reply
 }

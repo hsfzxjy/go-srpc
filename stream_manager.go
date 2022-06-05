@@ -33,7 +33,7 @@ func S(f func() error, sess *Session, cfg *SessionConfig) error {
 	go func() {
 		defer func() {
 			if p := recover(); p != nil {
-				if sess.state&ssCanceled != 0 {
+				if sess.state.hasFlag(ssCanceled) {
 					serverLogFunc("%+v\n", p)
 					return
 				}

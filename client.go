@@ -13,7 +13,6 @@ func (c *Client) CallStream(name string, args any) (h *streamHandle, err error) 
 		sid:    0,
 		ch:     make(chan any),
 		client: c,
-		state:  0,
 	}
 	var sess Session
 	err = c.Call(name, args, &sess)
