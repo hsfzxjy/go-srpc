@@ -152,6 +152,9 @@ func (s *Session) done() {
 }
 
 func (s *Session) panic(val *panicInfo) {
+	if err, ok := val.Data.(error); ok {
+		val.Data = transformError(err)
+	}
 	if s.state.hasFlagLock(ssFinished) {
 		s.panicInfo = val
 		return
