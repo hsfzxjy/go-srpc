@@ -105,6 +105,17 @@ func (h *streamHandle) CancelAndResult() error {
 	return h.Result()
 }
 
+func (h *streamHandle) GetError() error {
+	if !h.state.hasFlagLock(ssFinished) {
+		panic("srpc: GetError() called before stream finished")
+	}
+	if h.Err != nil {
+		return h.Err
+	} else {
+		return h.Panic
+	}
+}
+
 func (h *streamHandle) Cancel() bool {
 	if h.state.hasFlagLock(ssCanceled | ssFinished) {
 		return false
