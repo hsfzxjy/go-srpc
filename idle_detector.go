@@ -14,17 +14,17 @@ const (
 )
 
 type idleDetectorEvent struct {
-	typ  idleDetectorEventType
-	time time.Time
+	typ     idleDetectorEventType
+	version int32
 }
 
 type idleDetector struct {
-	q            chan idleDetectorEvent
-	exited       chan struct{}
-	counter      int32
-	lastIdleTime time.Time
-	duration     time.Duration
-	notifier     func()
+	q        chan idleDetectorEvent
+	exited   chan struct{}
+	counter  int32
+	version  int32
+	duration time.Duration
+	notifier func()
 }
 
 func newIdleDetector(duration time.Duration, notifier func()) *idleDetector {
@@ -32,6 +32,7 @@ func newIdleDetector(duration time.Duration, notifier func()) *idleDetector {
 	id.q = make(chan idleDetectorEvent, 1)
 	id.q <- idleDetectorEvent{typ: idLeave}
 	id.counter = 1
+	id.version = 0
 	id.exited = make(chan struct{})
 	id.duration = duration
 	id.notifier = notifier
@@ -59,15 +60,16 @@ func (id *idleDetector) loop() {
 		switch event.typ {
 		case idEnter:
 			id.counter++
+			id.version++
 		case idLeave:
 			id.counter--
+			id.version++
 			if id.counter == 0 {
-				id.lastIdleTime = time.Now()
-				timer := time.NewTimer(id.duration)
+				version := id.version
 				go func() {
-					t := <-timer.C
+					<-time.After(id.duration)
 					select {
-					case id.q <- idleDetectorEvent{idTimer, t}:
+					case id.q <- idleDetectorEvent{idTimer, version}:
 					case <-id.exited:
 					}
 				}()
@@ -76,7 +78,7 @@ func (id *idleDetector) loop() {
 			return
 		case idTimer:
 			if id.counter != 0 ||
-				event.time.Sub(id.lastIdleTime) <= id.duration {
+				event.version != id.version {
 				continue
 			}
 			id.notifier()
