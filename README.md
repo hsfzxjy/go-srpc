@@ -83,8 +83,15 @@ func (*Foo) Bar(arg ArgType, s *srpc.Session) error {
         // log something at the client-side
         s.Logf("Log from server! The arg is %v", arg)
 
-        // wait for a client-side cancellation
-        <-s.Canceled()
+        // wait for a client-side interrupt
+        <-s.EndedC()
+        // which may caused by
+        switch s.EndCause {
+        case srpc.EC_CLIENT_CANCELED:
+            // a cancellation
+        case srpc.EC_CLIENT_TIMEOUT:
+            // a client timeout
+        }
 
         // return an optional error to the client
         return nil

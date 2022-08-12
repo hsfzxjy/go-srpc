@@ -22,7 +22,7 @@ func (*Foo) Bar(n int, s *srpc.Session) error {
 		defer job.Stop()
 		select {
 		case <-job.C:
-		case <-s.Canceled():
+		case <-s.EndedC():
 			return nil
 		}
 		s.Logv("slow job ended")

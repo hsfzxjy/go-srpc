@@ -5,48 +5,41 @@ import (
 	"net/rpc"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 )
 
 var errNoSuchSession = errors.New("srpc-server: no such session")
 
 type StreamManager struct {
 	id       uint64
-	lock     sync.Mutex
-	sessions map[uint64]*Session
+	sessions sync.Map
 }
 
-var manager = StreamManager{
-	id:       0,
-	lock:     sync.Mutex{},
-	sessions: make(map[uint64]*Session),
-}
+var manager = StreamManager{id: 0}
 
 func S(f func() error, sess *Session, cfg *SessionConfig) error {
-	manager.lock.Lock()
-	defer manager.lock.Unlock()
 
-	sid := manager.id
+	sid := atomic.AddUint64(&manager.id, 1)
 	sess.initSession(sid, cfg)
-	manager.sessions[sid] = sess
-	manager.id++
+
+	manager.sessions.Store(sid, sess)
 
 	go func() {
 		defer func() {
 			if p := recover(); p != nil {
-				if sess.state.hasFlag(ssCanceled) {
-					serverLogFunc("%+v\n", p)
-					return
-				}
-				sess.panic(&panicInfo{Data: p, Stack: debug.Stack()})
+				serverLogFunc("%+v\n", p)
+				sess.pushPanic(&panicInfo{
+					Data:  p,
+					Stack: debug.Stack(),
+				})
 			}
 			sess.waitFlush(sess.cfg.KeepAlive)
-			manager.lock.Lock()
-			defer manager.lock.Unlock()
-			delete(manager.sessions, sid)
+			manager.sessions.Delete(sid)
 		}()
+		go sess.idleDetector.loop()
 		err := f()
 		if err == nil {
-			sess.done()
+			sess.pushDone()
 		} else {
 			sess.pushError(err)
 		}
@@ -56,28 +49,24 @@ func S(f func() error, sess *Session, cfg *SessionConfig) error {
 }
 
 func (m *StreamManager) Poll(sid uint64, reply *[]*StreamEvent) error {
-	manager.lock.Lock()
-	sess, ok := manager.sessions[sid]
-	manager.lock.Unlock()
-	if !ok {
+	v, loaded := manager.sessions.Load(sid)
+	if !loaded {
 		return errNoSuchSession
 	}
-
+	sess := v.(*Session)
+	sess.idleDetector.push(idEnter)
+	defer sess.idleDetector.push(idLeave)
 	*reply = sess.flush()
 	return nil
 }
 
-func (m *StreamManager) Cancel(sid uint64, reply *bool) error {
-	manager.lock.Lock()
-	defer manager.lock.Unlock()
-
-	var sess *Session
-	sess, *reply = manager.sessions[sid]
-	if !*reply {
+func (m *StreamManager) Cancel(sid uint64, loaded *bool) error {
+	var sess any
+	sess, *loaded = manager.sessions.LoadAndDelete(sid)
+	if !*loaded {
 		return nil
 	}
-	sess.cancel()
-	delete(manager.sessions, sess.Sid)
+	sess.(*Session).cancel()
 
 	return nil
 }

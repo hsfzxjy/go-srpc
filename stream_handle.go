@@ -1,16 +1,18 @@
 package srpc
 
 import (
-	"sync/atomic"
+	"net/rpc"
+	"sync"
 )
 
 type StreamHandle struct {
-	sid        uint64
-	state      sessionState
-	client     *Client
-	finishedCh chan struct{}
+	sid       uint64
+	client    *Client
+	endedCh   chan struct{}
+	endedOnce sync.Once
+	EndCause  EndCause
 
-	isPolling uint32
+	pollOnce sync.Once
 
 	Err   error
 	Panic *panicInfo
@@ -22,70 +24,74 @@ func newStreamHandle(client *Client) *StreamHandle {
 	handle.sid = 0
 	handle.ch = make(chan any)
 	handle.client = client
-	handle.finishedCh = make(chan struct{})
+	handle.endedCh = make(chan struct{})
 	return handle
+}
+
+func (h *StreamHandle) markEnded() {
+	h.endedOnce.Do(func() {
+		close(h.endedCh)
+		close(h.ch)
+	})
 }
 
 func (h *StreamHandle) startPoll() error {
 	var flushed []*StreamEvent
 
-	for !h.state.hasFlagLock(ssFinished) {
-		flushed = nil
-		err := h.client.Call("StreamManager.Poll", h.sid, &flushed)
-		if h.state.hasFlagLock(ssFinished) {
+	for {
+		select {
+		case <-h.endedCh:
 			return nil
-		}
-		if err != nil {
-			panic(err)
+		default:
 		}
 
-		if len(flushed) > 0 && flushed[len(flushed)-1].Typ.IsTerminal() {
-			h.state.setFlagLock(ssFinished)
-			close(h.finishedCh)
+		flushed = nil
+		invokeCh := make(chan *rpc.Call, 1)
+		call := h.client.Go("StreamManager.Poll", h.sid, &flushed, invokeCh)
+		select {
+		case <-h.endedCh:
+			return nil
+		case <-invokeCh:
 		}
 
-	LOOP:
+		if call.Error != nil {
+			panic(call.Error)
+		}
+
+	DISPATCH_EVENTS:
 		for _, e := range flushed {
 			switch e.Typ {
 			case seValue:
-				h.state.L.RLock()
-				if h.state.hasFlag(ssCanceled) {
-					h.state.L.RUnlock()
-					break LOOP
+				select {
+				case h.ch <- e.Data:
+					continue DISPATCH_EVENTS
+				case <-h.endedCh:
 				}
-				h.ch <- e.Data
-				h.state.L.RUnlock()
-				continue LOOP
 			case seLog:
 				clientLogFunc(e.Data.(string))
-				continue LOOP
+				continue DISPATCH_EVENTS
 			case seError:
 				if e.Data != nil {
 					h.Err = e.Data.(error)
 				}
 			case sePanic:
 				var pi = e.Data.(panicInfo)
-				if _, ok := pi.Data.(*sessionError); ok {
+				if _, ok := pi.Data.(EndCause); ok {
 					h.Err = &pi
 				} else {
 					h.Panic = &pi
 				}
 			case seDone:
 			}
-			close(h.ch)
+			h.markEnded()
 		}
 	}
-
-	return nil
 }
 
 func (h *StreamHandle) ensurePolling() {
-	if atomic.LoadUint32(&h.isPolling) == 1 {
-		return
-	}
-	if atomic.CompareAndSwapUint32(&h.isPolling, 0, 1) {
+	h.pollOnce.Do(func() {
 		go h.startPoll()
-	}
+	})
 }
 
 func (h *StreamHandle) C() <-chan any {
@@ -95,16 +101,14 @@ func (h *StreamHandle) C() <-chan any {
 }
 
 func (h *StreamHandle) Success() bool {
-	if !h.state.hasFlagLock(ssFinished) {
-		panic("srpc: Success() called before stream finished")
-	}
+	h.ensurePolling()
+	<-h.endedCh
 	return h.Panic == nil && h.Err == nil
 }
 
 func (h *StreamHandle) Result() error {
-	if !h.state.hasFlagLock(ssFinished) {
-		panic("srpc: Result() called before stream finished")
-	}
+	h.ensurePolling()
+	<-h.endedCh
 	if h.Panic != nil {
 		panic(h.Panic)
 	}
@@ -117,9 +121,8 @@ func (h *StreamHandle) CancelAndResult() error {
 }
 
 func (h *StreamHandle) GetError() error {
-	if !h.state.hasFlagLock(ssFinished) {
-		panic("srpc: GetError() called before stream finished")
-	}
+	h.ensurePolling()
+	<-h.endedCh
 	if h.Err != nil {
 		return h.Err
 	} else {
@@ -128,25 +131,32 @@ func (h *StreamHandle) GetError() error {
 }
 
 func (h *StreamHandle) Cancel() bool {
-	if h.state.hasFlagLock(ssCanceled | ssFinished) {
+	select {
+	case <-h.endedCh:
 		return false
+	default:
 	}
 
 	var reply bool
-	h.state.L.Lock()
-	defer h.state.L.Unlock()
-	h.state.setFlag(ssCanceled | ssFinished)
-	close(h.finishedCh)
+
+	h.markEnded()
+	h.Err = EC_CLIENT_CANCELED
+
 	h.client.Call("StreamManager.Cancel", h.sid, &reply)
-	close(h.ch)
 
 	return reply
 }
 
-func (h *StreamHandle) IsFinished() bool {
-	return h.state.hasFlagLock(ssFinished)
+func (h *StreamHandle) IsEnded() bool {
+	h.ensurePolling()
+	select {
+	case <-h.endedCh:
+		return true
+	default:
+		return false
+	}
 }
 
-func (h *StreamHandle) BlockUntilFinished() {
-	<-h.finishedCh
+func (h *StreamHandle) EndedC() <-chan struct{} {
+	return h.endedCh
 }

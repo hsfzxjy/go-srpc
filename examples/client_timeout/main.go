@@ -14,8 +14,8 @@ type Foo int
 
 func (*Foo) Bar(n int, s *srpc.Session) error {
 	return srpc.S(func() error {
-		s.PushValue(n)
-		return nil
+		<-s.EndedC()
+		return s.EndCause
 	}, s, &srpc.SessionConfig{
 		BufferCapacity: 0,
 		ClientTimeout:  100 * time.Millisecond,
