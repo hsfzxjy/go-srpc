@@ -65,7 +65,11 @@ func (s *Session) push(typ streamEventType, data any) {
 }
 
 func (s *Session) pushError(e error) {
-	if !s.markEnded(EC_ERROR) {
+	var cause = EC_ERROR
+	if c, ok := e.(EndCause); ok {
+		cause = c
+	}
+	if !s.markEnded(cause) {
 		return
 	}
 	e = transformError(e)
