@@ -5,15 +5,25 @@ import (
 )
 
 type StreamHandle struct {
-	sid    uint64
-	state  sessionState
-	client *Client
+	sid        uint64
+	state      sessionState
+	client     *Client
+	finishedCh chan struct{}
 
 	isPolling uint32
 
 	Err   error
 	Panic *panicInfo
 	ch    chan any
+}
+
+func newStreamHandle(client *Client) *StreamHandle {
+	handle := new(StreamHandle)
+	handle.sid = 0
+	handle.ch = make(chan any)
+	handle.client = client
+	handle.finishedCh = make(chan struct{})
+	return handle
 }
 
 func (h *StreamHandle) startPoll() error {
@@ -31,6 +41,7 @@ func (h *StreamHandle) startPoll() error {
 
 		if len(flushed) > 0 && flushed[len(flushed)-1].Typ.IsTerminal() {
 			h.state.setFlagLock(ssFinished)
+			close(h.finishedCh)
 		}
 
 	LOOP:
@@ -129,4 +140,12 @@ func (h *StreamHandle) Cancel() bool {
 	close(h.ch)
 
 	return reply
+}
+
+func (h *StreamHandle) IsFinished() bool {
+	return h.state.hasFlagLock(ssFinished)
+}
+
+func (h *StreamHandle) BlockUntilFinished() {
+	<-h.finishedCh
 }

@@ -9,18 +9,13 @@ type Client struct {
 }
 
 func (c *Client) CallStream(name string, args any) (h *StreamHandle, err error) {
-	handle := StreamHandle{
-		sid:    0,
-		ch:     make(chan any),
-		client: c,
-	}
+	h = newStreamHandle(c)
 	var sess Session
 	err = c.Call(name, args, &sess)
 	if err != nil {
 		return
 	}
-	handle.sid = sess.Sid
-	h = &handle
+	h.sid = sess.Sid
 
 	return
 }
