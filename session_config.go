@@ -6,6 +6,7 @@ type SessionConfig struct {
 	BufferCapacity int
 	ClientTimeout  time.Duration
 	KeepAlive      time.Duration
+	PollTimeout    time.Duration
 }
 
 func (cfg *SessionConfig) validate() bool {
@@ -32,6 +33,10 @@ func (cfg *SessionConfig) copyFrom(src *SessionConfig, strict bool) bool {
 
 	if src.KeepAlive > 0 {
 		cfg.KeepAlive = src.KeepAlive
+	}
+
+	if src.PollTimeout != 0 {
+		cfg.PollTimeout = src.PollTimeout
 	}
 
 	return true

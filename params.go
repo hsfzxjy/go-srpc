@@ -9,6 +9,7 @@ var defaultSessionConfig = SessionConfig{
 	BufferCapacity: 10,
 	ClientTimeout:  10 * time.Second,
 	KeepAlive:      10 * time.Second,
+	PollTimeout:    -1,
 }
 
 func SetDefaultSessionConfig(cfg SessionConfig) bool {

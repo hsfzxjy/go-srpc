@@ -154,10 +154,22 @@ func (s *Session) flush() (ret []*StreamEvent) {
 		}
 	} else {
 		// block until the first event arrived
+		var breakFirstPoll chan struct{} = s.endCh
+		if s.cfg.PollTimeout > 0 {
+			breakFirstPoll = make(chan struct{})
+			go func() {
+				select {
+				case <-s.endCh:
+				case <-time.After(s.cfg.PollTimeout):
+				}
+				close(breakFirstPoll)
+			}()
+		}
+
 		select {
 		case first := <-s.buf:
 			ret = append(ret, first)
-		case <-s.endCh:
+		case <-breakFirstPoll:
 			return nil
 		}
 
