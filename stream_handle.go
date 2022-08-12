@@ -4,7 +4,7 @@ import (
 	"sync/atomic"
 )
 
-type streamHandle struct {
+type StreamHandle struct {
 	sid    uint64
 	state  sessionState
 	client *Client
@@ -16,7 +16,7 @@ type streamHandle struct {
 	ch    chan any
 }
 
-func (h *streamHandle) startPoll() error {
+func (h *StreamHandle) startPoll() error {
 	var flushed []*StreamEvent
 
 	for !h.state.hasFlagLock(ssFinished) {
@@ -68,7 +68,7 @@ func (h *streamHandle) startPoll() error {
 	return nil
 }
 
-func (h *streamHandle) ensurePolling() {
+func (h *StreamHandle) ensurePolling() {
 	if atomic.LoadUint32(&h.isPolling) == 1 {
 		return
 	}
@@ -77,20 +77,20 @@ func (h *streamHandle) ensurePolling() {
 	}
 }
 
-func (h *streamHandle) C() <-chan any {
+func (h *StreamHandle) C() <-chan any {
 	h.ensurePolling()
 
 	return h.ch
 }
 
-func (h *streamHandle) Success() bool {
+func (h *StreamHandle) Success() bool {
 	if !h.state.hasFlagLock(ssFinished) {
 		panic("srpc: Success() called before stream finished")
 	}
 	return h.Panic == nil && h.Err == nil
 }
 
-func (h *streamHandle) Result() error {
+func (h *StreamHandle) Result() error {
 	if !h.state.hasFlagLock(ssFinished) {
 		panic("srpc: Result() called before stream finished")
 	}
@@ -100,12 +100,12 @@ func (h *streamHandle) Result() error {
 	return h.Err
 }
 
-func (h *streamHandle) CancelAndResult() error {
+func (h *StreamHandle) CancelAndResult() error {
 	h.Cancel()
 	return h.Result()
 }
 
-func (h *streamHandle) GetError() error {
+func (h *StreamHandle) GetError() error {
 	if !h.state.hasFlagLock(ssFinished) {
 		panic("srpc: GetError() called before stream finished")
 	}
@@ -116,7 +116,7 @@ func (h *streamHandle) GetError() error {
 	}
 }
 
-func (h *streamHandle) Cancel() bool {
+func (h *StreamHandle) Cancel() bool {
 	if h.state.hasFlagLock(ssCanceled | ssFinished) {
 		return false
 	}

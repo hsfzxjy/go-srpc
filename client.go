@@ -8,8 +8,8 @@ type Client struct {
 	*rpc.Client
 }
 
-func (c *Client) CallStream(name string, args any) (h *streamHandle, err error) {
-	handle := streamHandle{
+func (c *Client) CallStream(name string, args any) (h *StreamHandle, err error) {
+	handle := StreamHandle{
 		sid:    0,
 		ch:     make(chan any),
 		client: c,
