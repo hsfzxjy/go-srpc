@@ -177,12 +177,13 @@ func (s *Session) flush() (ret []*StreamEvent) {
 			return nil
 		}
 
+		cond := time.After(10 * time.Millisecond)
 	LOOP2:
 		for {
 			select {
 			case event := <-s.buf:
 				ret = append(ret, event)
-			default:
+			case <-cond:
 				break LOOP2
 			}
 		}
