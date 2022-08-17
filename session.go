@@ -6,6 +6,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/hsfzxjy/mamo"
 )
 
 type Session struct {
@@ -23,7 +25,7 @@ type Session struct {
 
 	cfg *SessionConfig
 
-	idleDetector *idleDetector
+	mamo *mamo.Mamo
 }
 
 func (s *Session) initSession(sid uint64, cfg *SessionConfig) {
@@ -34,8 +36,9 @@ func (s *Session) initSession(sid uint64, cfg *SessionConfig) {
 	s.flushedCh = make(chan struct{})
 	s.finalEvent = make(chan *StreamEvent, 1)
 	s.cfg = cfg
-	s.idleDetector = newIdleDetector(s.cfg.ClientTimeout, func() {
+	s.mamo = mamo.New(s.cfg.ClientTimeout, func() bool {
 		s.pushError(EC_CLIENT_TIMEOUT)
+		return true
 	})
 }
 
@@ -45,7 +48,7 @@ func (s *Session) markEnded(cause EndCause) bool {
 		s.EndCause = cause
 		close(s.endCh)
 		marked = true
-		s.idleDetector.push(idQuit)
+		go s.mamo.Quit()
 	})
 	return marked
 }
@@ -54,7 +57,10 @@ func (s *Session) push(typ streamEventType, data any) {
 	event := &StreamEvent{Typ: typ, Data: data}
 
 	if typ.IsTerminal() {
-		s.finalEvent <- event
+		select {
+		case s.finalEvent <- event:
+		default:
+		}
 	} else {
 		select {
 		case s.buf <- event:

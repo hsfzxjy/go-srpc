@@ -36,7 +36,7 @@ func S(f func() error, sess *Session, cfg *SessionConfig) error {
 			sess.waitFlush(sess.cfg.KeepAlive)
 			manager.sessions.Delete(sid)
 		}()
-		go sess.idleDetector.loop()
+		sess.mamo.Loop()
 		err := f()
 		if err == nil {
 			sess.pushDone()
@@ -54,8 +54,10 @@ func (m *StreamManager) Poll(sid uint64, reply *[]*StreamEvent) error {
 		return errNoSuchSession
 	}
 	sess := v.(*Session)
-	sess.idleDetector.push(idEnter)
-	defer sess.idleDetector.push(idLeave)
+	sess.mamo.Acquire()
+	defer sess.mamo.Release()
+	// sess.idleDetector.push(idEnter)
+	// defer sess.idleDetector.push(idLeave)
 	*reply = sess.flush()
 	return nil
 }
