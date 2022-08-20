@@ -135,7 +135,7 @@ func (h *StreamHandle) GetError() error {
 func (h *StreamHandle) SoftCancel() bool {
 	var reply bool
 	if atomic.CompareAndSwapInt32(&h.isCanceled, 0, 1) {
-		h.client.Call("StreamManager.Cancel", h.sid, &reply)
+		h.client.Call("StreamManager.SoftCancel", h.sid, &reply)
 	}
 	return reply
 }

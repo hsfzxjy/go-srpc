@@ -56,8 +56,6 @@ func (m *StreamManager) Poll(sid uint64, reply *[]*StreamEvent) error {
 	sess := v.(*Session)
 	sess.mamo.Acquire()
 	defer sess.mamo.Release()
-	// sess.idleDetector.push(idEnter)
-	// defer sess.idleDetector.push(idLeave)
 	*reply = sess.flush()
 	return nil
 }
@@ -65,6 +63,17 @@ func (m *StreamManager) Poll(sid uint64, reply *[]*StreamEvent) error {
 func (m *StreamManager) Cancel(sid uint64, loaded *bool) error {
 	var sess any
 	sess, *loaded = manager.sessions.LoadAndDelete(sid)
+	if !*loaded {
+		return nil
+	}
+	sess.(*Session).cancel()
+
+	return nil
+}
+
+func (m *StreamManager) SoftCancel(sid uint64, loaded *bool) error {
+	var sess any
+	sess, *loaded = manager.sessions.Load(sid)
 	if !*loaded {
 		return nil
 	}
