@@ -3,14 +3,16 @@ package srpc
 import (
 	"net/rpc"
 	"sync"
+	"sync/atomic"
 )
 
 type StreamHandle struct {
-	sid       uint64
-	client    *Client
-	endedCh   chan struct{}
-	endedOnce sync.Once
-	EndCause  EndCause
+	sid        uint64
+	client     *Client
+	endedCh    chan struct{}
+	isCanceled int32
+	endedOnce  sync.Once
+	EndCause   EndCause
 
 	pollOnce sync.Once
 
@@ -130,6 +132,14 @@ func (h *StreamHandle) GetError() error {
 	}
 }
 
+func (h *StreamHandle) SoftCancel() bool {
+	var reply bool
+	if atomic.CompareAndSwapInt32(&h.isCanceled, 0, 1) {
+		h.client.Call("StreamManager.Cancel", h.sid, &reply)
+	}
+	return reply
+}
+
 func (h *StreamHandle) Cancel() bool {
 	select {
 	case <-h.endedCh:
@@ -137,14 +147,10 @@ func (h *StreamHandle) Cancel() bool {
 	default:
 	}
 
-	var reply bool
-
 	h.markEnded()
 	h.Err = EC_CLIENT_CANCELED
 
-	h.client.Call("StreamManager.Cancel", h.sid, &reply)
-
-	return reply
+	return h.SoftCancel()
 }
 
 func (h *StreamHandle) IsEnded() bool {
