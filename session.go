@@ -215,7 +215,7 @@ func (s *Session) cancel() {
 	s.pushError(EC_CLIENT_CANCELED)
 }
 
-func (s *Session) EndedC() <-chan struct{} {
+func (s *Session) EndC() <-chan struct{} {
 	return s.endCh
 }
 

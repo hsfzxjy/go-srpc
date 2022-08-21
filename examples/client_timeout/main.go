@@ -14,7 +14,7 @@ type Foo int
 
 func (*Foo) Bar(n int, s *srpc.Session) error {
 	return srpc.S(func() error {
-		<-s.EndedC()
+		<-s.EndC()
 		return s.EndCause
 	}, s, &srpc.SessionConfig{
 		BufferCapacity: 0,
