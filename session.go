@@ -199,7 +199,7 @@ func (s *Session) flush() (ret []*StreamEvent) {
 }
 
 func (s *Session) cancel() {
-	s.markEnded(EC_CLIENT_CANCELED)
+	s.pushError(EC_CLIENT_CANCELED)
 }
 
 func (s *Session) EndedC() <-chan struct{} {
