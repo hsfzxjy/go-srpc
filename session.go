@@ -18,6 +18,8 @@ type Session struct {
 	endOnce  sync.Once
 	EndCause EndCause
 
+	doneCh chan struct{}
+
 	flushedCh   chan struct{}
 	flushedOnce sync.Once
 
@@ -33,6 +35,7 @@ func (s *Session) initSession(sid uint64, cfg *SessionConfig) {
 	s.Sid = sid
 	s.buf = make(chan *StreamEvent, cfg.BufferCapacity)
 	s.endCh = make(chan struct{})
+	s.doneCh = make(chan struct{})
 	s.flushedCh = make(chan struct{})
 	s.finalEvent = make(chan *StreamEvent, 1)
 	s.cfg = cfg
@@ -145,6 +148,16 @@ func (s *Session) flush() (ret []*StreamEvent) {
 	ret = make([]*StreamEvent, 0, 16)
 
 	if ended {
+		if s.cfg.PollTimeout > 0 {
+			select {
+			case <-s.doneCh:
+			case <-time.After(s.cfg.PollTimeout):
+				return nil
+			}
+		} else {
+			<-s.doneCh
+		}
+
 		if finalEvent == nil {
 			<-s.flushedCh
 			return nil

@@ -37,6 +37,7 @@ func S(f func() error, sess *Session, cfg *SessionConfig) error {
 			manager.sessions.Delete(sid)
 		}()
 		sess.mamo.Loop()
+		defer close(sess.doneCh)
 		err := f()
 		if err == nil {
 			sess.pushDone()
