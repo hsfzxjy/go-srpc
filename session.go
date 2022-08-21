@@ -10,16 +10,20 @@ import (
 	"github.com/hsfzxjy/mamo"
 )
 
+// A streaming RPC session
 type Session struct {
 	Sid uint64
 
-	buf      chan *StreamEvent
+	buf chan *StreamEvent
+	// signal that no more events should be pushed
 	endCh    chan struct{}
 	endOnce  sync.Once
 	EndCause EndCause
 
+	// signal that the main function has finished
 	doneCh chan struct{}
 
+	// signal that all events be flushed
 	flushedCh   chan struct{}
 	flushedOnce sync.Once
 
@@ -27,6 +31,7 @@ type Session struct {
 
 	cfg *SessionConfig
 
+	// for checking client timeout
 	mamo *mamo.Mamo
 }
 
@@ -102,10 +107,12 @@ func (s *Session) pushPanic(val *panicInfo) {
 	s.push(sePanic, val)
 }
 
+// Push arbitary value to client
 func (s *Session) PushValue(data any) {
 	s.push(seValue, data)
 }
 
+// Log a formatted message at client side
 func (s *Session) Logf(format string, args ...any) {
 	s.push(seLog, fmt.Sprintf(format, args...))
 }
@@ -196,7 +203,7 @@ func (s *Session) flush() (ret []*StreamEvent) {
 			return nil
 		}
 
-		cond := time.After(10 * time.Millisecond)
+		cond := time.After(50 * time.Millisecond)
 	LOOP2:
 		for {
 			select {

@@ -102,12 +102,14 @@ func (h *StreamHandle) C() <-chan any {
 	return h.ch
 }
 
+// Wait for the stream to complete, and return whether a panic or error is thrown from the server-side
 func (h *StreamHandle) Success() bool {
 	h.ensurePolling()
 	<-h.endedCh
 	return h.Panic == nil && h.Err == nil
 }
 
+// Wait for the stream to complete. If server-side throws a panic, PANIC with that value; otherwise, return the error that server throws
 func (h *StreamHandle) Result() error {
 	h.ensurePolling()
 	<-h.endedCh
@@ -122,6 +124,7 @@ func (h *StreamHandle) CancelAndResult() error {
 	return h.Result()
 }
 
+// Wait for the stream to complete. If server throws a panic or error, return that value
 func (h *StreamHandle) GetError() error {
 	h.ensurePolling()
 	<-h.endedCh
@@ -132,6 +135,7 @@ func (h *StreamHandle) GetError() error {
 	}
 }
 
+// Advise the server that the stream should be canceled, but still wait for subsequent events
 func (h *StreamHandle) SoftCancel() bool {
 	var reply bool
 	if atomic.CompareAndSwapInt32(&h.isCanceled, 0, 1) {
@@ -140,6 +144,7 @@ func (h *StreamHandle) SoftCancel() bool {
 	return reply
 }
 
+// Forcibly cancel the stream, no more events is coming from the server
 func (h *StreamHandle) Cancel() bool {
 	select {
 	case <-h.endedCh:
@@ -154,7 +159,8 @@ func (h *StreamHandle) Cancel() bool {
 	if atomic.CompareAndSwapInt32(&h.isCanceled, 0, 1) {
 		h.client.Call("StreamManager.Cancel", h.sid, &reply)
 	}
-	return reply}
+	return reply
+}
 
 func (h *StreamHandle) IsEnded() bool {
 	h.ensurePolling()
@@ -166,6 +172,6 @@ func (h *StreamHandle) IsEnded() bool {
 	}
 }
 
-func (h *StreamHandle) EndedC() <-chan struct{} {
+func (h *StreamHandle) EndC() <-chan struct{} {
 	return h.endedCh
 }
